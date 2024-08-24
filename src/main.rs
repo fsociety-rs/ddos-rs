@@ -1,33 +1,60 @@
 use reqwest::Client;
-use tokio;
+use tokio::sync::Semaphore;
+use std::sync::Arc;
+use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = Client::new();
-    let url = "https://www.karlancer.com";
+    let client = Client::builder()
+        .timeout(Duration::from_secs(3))
+        .build()?;
 
-    // تعداد درخواست‌هایی که می‌خواهیم ارسال کنیم
-    let request_count = 100;
+    let url = "https://example.com";
+    let request_count = 5000;
+    let concurrency_limit = 100;
 
-    // ایجاد Futureها برای ارسال درخواست‌ها
-    let futures: Vec<_> = (0..request_count).map(|_| {
-        let client = client.clone(); // کلون کردن client برای استفاده در Future
-        let url = url.to_string(); // کلون کردن url برای استفاده در Future
-        tokio::spawn(async move {
+    let semaphore = Arc::new(Semaphore::new(concurrency_limit));
+    let mut handles = vec![];
+
+    for _ in 0..request_count {
+        let semaphore = semaphore.clone();
+        let client = client.clone();
+        let url = url.to_string();
+
+        let handle = tokio::spawn(async move {
+            // Acquire a permit from the semaphore
+            let _permit = match semaphore.acquire().await {
+                Ok(permit) => permit,
+                Err(_) => {
+                    eprintln!("Failed to acquire semaphore permit");
+                    return;
+                }
+            };
+
+            // Use the permit to limit concurrent requests
             match client.get(&url).send().await {
                 Ok(response) => {
-                    println!("Status: {}", response.status());
+                    if response.status().is_success() {
+                        println!("Request successful, Status: {}", response.status());
+                    } else {
+                        println!("Request failed, Status: {}", response.status());
+                    }
                 }
                 Err(err) => {
-                    println!("Error: {}", err);
+                    eprintln!("Request error: {}", err);
                 }
             }
-        })
-    }).collect();
 
-    // منتظر می‌مانیم تا همه Futureها تکمیل شوند
-    for future in futures {
-        future.await?;
+            // `_permit` is automatically released when it goes out of scope
+        });
+
+        handles.push(handle);
+    }
+
+    for handle in handles {
+        if let Err(err) = handle.await {
+            eprintln!("Handle error: {}", err);
+        }
     }
 
     Ok(())
