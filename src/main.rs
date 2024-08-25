@@ -1,6 +1,6 @@
 use reqwest::Client;
 
-const NUM_REQUESTS: usize = 100_000_000; // تعداد درخواست‌ها
+const NUM_REQUESTS: usize = 100_000_000_000; // تعداد درخواست‌ها
 // const CONCURRENCY_LIMIT: usize = 100; // تعداد همزمانی
 
 #[tokio::main]
